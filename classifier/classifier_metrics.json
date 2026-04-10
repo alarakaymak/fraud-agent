@@ -1,0 +1,10 @@
+{
+  "roc_auc": 0.9796,
+  "pr_auc": 0.8241,
+  "auto_approve_threshold": 0.001,
+  "auto_flag_threshold": 0.999,
+  "auto_approve_pct": 0.9072,
+  "borderline_pct": 0.0924,
+  "auto_flag_pct": 0.0004,
+  "borderline_fraud_rate": 0.0132
+}

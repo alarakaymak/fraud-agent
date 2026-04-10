@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FraudGuard — AI Transaction Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c10;
+      --surface:   #111318;
+      --border:    #1e2330;
+      --border2:   #2a3045;
+      --text:      #e4e8f0;
+      --muted:     #6b7490;
+      --accent:    #4f6ef7;
+      --accent-glow: rgba(79,110,247,0.15);
+      --green:  #22c55e; --green-bg:  #0a1f14;
+      --red:    #ef4444; --red-bg:    #1c0a0a;
+      --orange: #f97316; --orange-bg: #1c0f05;
+      --purple: #a855f7; --purple-bg: #150d1f;
+      --yellow: #eab308; --yellow-bg: #1a1500;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Nav ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 56px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .nav-brand { display: flex; align-items: center; gap: 10px; }
+
+    .brand-icon {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, #4f6ef7, #7c3aed);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem; font-weight: 800; color: white;
+    }
+
+    .brand-name { font-size: 0.95rem; font-weight: 700; }
+    .brand-tag {
+      font-size: 0.68rem; background: var(--accent-glow);
+      color: var(--accent); border: 1px solid rgba(79,110,247,0.3);
+      padding: 2px 7px; border-radius: 4px; font-weight: 600;
+    }
+
+    .nav-stats { display: flex; gap: 28px; }
+
+    .stat-pill { display: flex; flex-direction: column; align-items: flex-end; font-size: 0.72rem; }
+    .stat-pill .val { font-size: 0.88rem; font-weight: 700; }
+    .stat-pill .lbl { color: var(--muted); margin-top: 1px; }
+
+    /* ── Main layout ── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 390px 1fr;
+      overflow: hidden;
+      height: calc(100vh - 56px);
+    }
+
+    /* ── Left panel ── */
+    .left-panel {
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .left-scroll {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .left-footer {
+      flex-shrink: 0;
+      padding: 14px 22px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .panel-section {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 22px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .section-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+
+    /* ── Scenario list ── */
+    .scenario-list { display: flex; flex-direction: column; gap: 7px; }
+
+    .scenario-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    .scenario-card:hover  { border-color: var(--border2); background: #0e1018; }
+    .scenario-card.active { border-color: var(--accent); background: var(--accent-glow); }
+
+    .scenario-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    .scenario-info { flex: 1; min-width: 0; }
+    .scenario-title { font-size: 0.82rem; font-weight: 600; margin-bottom: 2px; }
+    .scenario-meta  { font-size: 0.73rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .scenario-badge {
+      font-size: 0.67rem; font-weight: 700;
+      padding: 2px 8px; border-radius: 4px;
+      flex-shrink: 0; letter-spacing: 0.04em;
+    }
+
+    /* Custom mode toggle */
+    .mode-toggle {
+      display: flex;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: transparent;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+
+    .mode-btn.active {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border2);
+    }
+
+    /* ── Transaction form ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-field.full { grid-column: 1 / -1; }
+
+    .field-label {
+      font-size: 0.67rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+    }
+
+    .field-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 8px 10px;
+      color: var(--text);
+      font-size: 0.83rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+
+    .field-input:focus { border-color: var(--accent); }
+    .field-input::placeholder { color: var(--muted); }
+
+    select.field-input {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7490' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+
+    /* Score slider */
+    .score-section { padding: 16px 22px; border-bottom: 1px solid var(--border); }
+
+    .score-header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    .score-label { font-size: 0.68rem; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+    .score-value { font-size: 1.1rem; font-weight: 800; }
+
+    .score-track { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .score-fill {
+      height: 100%; border-radius: 3px;
+      background: linear-gradient(90deg, #22c55e 0%, #eab308 45%, #ef4444 100%);
+      transition: width 0.4s cubic-bezier(.4,0,.2,1);
+    }
+
+    .score-zones {
+      display: flex; justify-content: space-between;
+      margin-top: 5px; font-size: 0.65rem; color: var(--muted);
+    }
+
+    input[type=range].score-slider {
+      width: 100%;
+      margin-top: 10px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* Analyze button */
+    .analyze-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #4f6ef7, #7c3aed);
+      border: none; border-radius: 10px;
+      padding: 13px 20px;
+      color: white; font-size: 0.9rem; font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .analyze-btn:hover  { opacity: 0.9; }
+    .analyze-btn:active { transform: scale(0.98); }
+    .analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── Right panel ── */
+    .right-panel { display: flex; flex-direction: column; overflow: hidden; }
+
+    .idle-state {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: var(--muted); padding: 40px;
+    }
+
+    .idle-icon {
+      width: 64px; height: 64px;
+      border: 2px dashed var(--border2);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; margin-bottom: 4px;
+    }
+
+    .idle-title { font-size: 1rem; font-weight: 600; color: var(--text); }
+    .idle-sub   { font-size: 0.82rem; text-align: center; max-width: 300px; line-height: 1.55; }
+
+    .analysis-panel { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+    .analysis-panel.visible { display: flex; }
+
+    /* Result header */
+    .result-header {
+      padding: 18px 28px 15px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 14px;
+    }
+
+    .result-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .result-decision { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.01em; }
+    .result-txn-id   { font-family: monospace; font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
+    .route-chip {
+      margin-left: auto;
+      font-size: 0.7rem; font-weight: 600;
+      padding: 4px 10px; border-radius: 6px;
+      background: var(--border); color: var(--muted);
+    }
+
+    /* Specialist grid */
+    .specialist-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 10px; padding: 18px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .specialist-card {
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 13px 15px; background: var(--surface);
+    }
+
+    .spec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+
+    .spec-domain {
+      font-size: 0.68rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .spec-level {
+      font-size: 0.68rem; font-weight: 700;
+      padding: 2px 7px; border-radius: 4px;
+    }
+
+    .spec-finding { font-size: 0.77rem; color: var(--muted); line-height: 1.45; }
+
+    /* Explanation */
+    .explanation-block {
+      padding: 18px 28px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .explanation-label {
+      font-size: 0.68rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--muted); margin-bottom: 7px;
+    }
+
+    .explanation-text { font-size: 0.84rem; line-height: 1.65; }
+
+    /* Chat */
+    .chat-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .chat-header {
+      padding: 13px 28px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.7rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--muted);
+      display: none; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .chat-header.visible { display: flex; }
+
+    .live-dot {
+      width: 6px; height: 6px;
+      background: var(--green); border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { opacity:1; } 50% { opacity:0.3; }
+    }
+
+    .chat-messages {
+      flex: 1; overflow-y: auto;
+      padding: 18px 28px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+
+    .msg { display: flex; flex-direction: column; max-width: 75%; }
+    .msg.agent { align-self: flex-start; }
+    .msg.user  { align-self: flex-end; }
+
+    .msg-label {
+      font-size: 0.67rem; color: var(--muted);
+      margin-bottom: 5px; font-weight: 600; letter-spacing: 0.04em;
+    }
+
+    .msg.user .msg-label { text-align: right; }
+
+    .msg-bubble {
+      padding: 11px 15px; border-radius: 12px;
+      font-size: 0.84rem; line-height: 1.6;
+    }
+
+    .msg.agent .msg-bubble {
+      background: var(--surface); border: 1px solid var(--border);
+      border-top-left-radius: 4px;
+    }
+
+    .msg.user .msg-bubble {
+      background: linear-gradient(135deg, #4f6ef7, #7c3aed);
+      color: white; border-bottom-right-radius: 4px;
+    }
+
+    .typing .msg-bubble {
+      display: flex; align-items: center; gap: 5px;
+      padding: 14px 18px;
+    }
+
+    .dot {
+      width: 6px; height: 6px; background: var(--muted);
+      border-radius: 50%; animation: bounce 1.3s infinite;
+    }
+
+    .dot:nth-child(2) { animation-delay: 0.18s; }
+    .dot:nth-child(3) { animation-delay: 0.36s; }
+
+    @keyframes bounce {
+      0%,80%,100% { transform:translateY(0);opacity:0.5; }
+      40%          { transform:translateY(-7px);opacity:1; }
+    }
+
+    .chat-input-wrap {
+      padding: 14px 28px; border-top: 1px solid var(--border);
+      display: none;
+    }
+
+    .chat-input-wrap.visible { display: block; }
+
+    .chat-input-row {
+      display: flex; background: var(--surface);
+      border: 1px solid var(--border2); border-radius: 10px;
+      overflow: hidden; transition: border-color 0.15s;
+    }
+
+    .chat-input-row:focus-within { border-color: var(--accent); }
+
+    .chat-input-row input {
+      flex: 1; background: transparent; border: none;
+      padding: 12px 16px; color: var(--text);
+      font-size: 0.875rem; outline: none;
+    }
+
+    .chat-input-row input::placeholder { color: var(--muted); }
+
+    .send-btn {
+      background: var(--accent); border: none; padding: 0 18px;
+      color: white; font-size: 0.85rem; font-weight: 700;
+      cursor: pointer; transition: background 0.15s;
+    }
+
+    .send-btn:hover { background: #3d5ce8; }
+    .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .reset-wrap { padding: 12px 28px; border-top: 1px solid var(--border); display: none; }
+    .reset-wrap.visible { display: block; }
+
+    .reset-btn {
+      width: 100%; background: transparent;
+      border: 1px solid var(--border2); border-radius: 8px;
+      padding: 9px; color: var(--muted); font-size: 0.82rem;
+      cursor: pointer; transition: all 0.15s;
+    }
+
+    .reset-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* Decision colors */
+    .level-HIGH   { background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(239,68,68,0.2); }
+    .level-MEDIUM { background: var(--yellow-bg); color: var(--yellow); border: 1px solid rgba(234,179,8,0.2); }
+    .level-LOW    { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(34,197,94,0.2); }
+
+    .badge-inline {
+      display: inline-block; padding: 2px 9px;
+      border-radius: 5px; font-size: 0.74rem; font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-brand">
+      <div class="brand-icon">F</div>
+      <span class="brand-name">FraudGuard</span>
+      <span class="brand-tag">AI</span>
+    </div>
+    <div class="nav-stats">
+      <div class="stat-pill">
+        <span class="val">97.96%</span>
+        <span class="lbl">ROC-AUC</span>
+      </div>
+      <div class="stat-pill">
+        <span class="val">90.7%</span>
+        <span class="lbl">Auto-approved</span>
+      </div>
+      <div class="stat-pill">
+        <span class="val">284k</span>
+        <span class="lbl">Training txns</span>
+      </div>
+      <div class="stat-pill">
+        <span class="val" style="color:var(--green)">Live</span>
+        <span class="lbl">AWS Lambda</span>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- ── Left Panel ── -->
+    <div class="left-panel">
+    <div class="left-scroll">
+
+      <!-- Mode toggle -->
+      <div class="panel-section">
+        <div class="section-header">
+          <div class="section-label">Mode</div>
+        </div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" id="modePreset" onclick="setMode('preset')">Demo Scenarios</button>
+          <button class="mode-btn" id="modeCustom" onclick="setMode('custom')">Custom Input</button>
+        </div>
+      </div>
+
+      <!-- Preset scenarios -->
+      <div class="panel-section" id="presetSection">
+        <div class="section-label" style="margin-bottom:12px">Select a scenario</div>
+        <div class="scenario-list" id="scenarioList"></div>
+      </div>
+
+      <!-- Transaction form (always visible, editable in custom mode) -->
+      <div class="panel-section">
+        <div class="section-header">
+          <div class="section-label">Transaction Details</div>
+          <span style="font-size:0.7rem;color:var(--muted)" id="editHint">auto-filled</span>
+        </div>
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="field-label">User ID</label>
+            <input class="field-input" id="fUserId" type="text" value="user_001" />
+          </div>
+          <div class="form-field">
+            <label class="field-label">Amount ($)</label>
+            <input class="field-input" id="fAmount" type="number" step="0.01" min="0.01" value="1250.00" />
+          </div>
+          <div class="form-field full">
+            <label class="field-label">Merchant Category</label>
+            <select class="field-input" id="fMerchant">
+              <option>Electronics</option>
+              <option>Grocery</option>
+              <option>Restaurant</option>
+              <option>Gas Station</option>
+              <option>Clothing</option>
+              <option>Hotel</option>
+              <option>Online Retail</option>
+              <option>Streaming</option>
+              <option>Jewelry</option>
+              <option>Gift Cards</option>
+              <option>Cryptocurrency Exchange</option>
+              <option>Wire Transfer</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="field-label">Time of Day</label>
+            <input class="field-input" id="fTime" type="text" placeholder="02:14 AM" value="02:14 AM" />
+          </div>
+          <div class="form-field">
+            <label class="field-label">City</label>
+            <input class="field-input" id="fCity" type="text" placeholder="Nashville, TN" value="Los Angeles, CA" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Fraud score -->
+      <div class="score-section">
+        <!-- Preset mode: shows score bar + slider -->
+        <div id="scorePresetView">
+          <div class="score-header">
+            <span class="score-label">ML Fraud Score</span>
+            <span class="score-value" id="displayScore">0.73000</span>
+          </div>
+          <div class="score-track">
+            <div class="score-fill" id="scoreBar" style="width:73%"></div>
+          </div>
+          <div class="score-zones">
+            <span>Auto-approve &lt; 0.001</span>
+            <span>Agent review ↑</span>
+          </div>
+          <input type="range" class="score-slider" id="scoreSlider"
+            min="0" max="1" step="0.001" value="0.73"
+            oninput="updateScore(this.value)" />
+          <div style="font-size:0.7rem;color:var(--muted);margin-top:4px" id="scoreHint">
+            Preset value — locked for demo
+          </div>
+        </div>
+        <!-- Custom mode: classifier computes automatically -->
+        <div id="scoreCustomView" style="display:none">
+          <div class="score-header">
+            <span class="score-label">ML Fraud Score</span>
+            <span style="font-size:0.78rem;color:var(--muted);font-style:italic">computed automatically</span>
+          </div>
+          <div style="padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:0.77rem;color:var(--muted);line-height:1.5">
+            The XGBoost classifier scores this transaction from the amount and time you entered. Score appears in the result after analysis.
+          </div>
+        </div>
+        <div style="margin-top:10px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:7px;font-size:0.72rem;line-height:1.5;color:var(--muted)">
+          <span style="color:var(--green);font-weight:700">APPROVE</span> ·
+          <span style="color:var(--red);font-weight:700">BLOCK</span> ·
+          <span style="color:var(--orange);font-weight:700">REVIEW</span> (human escalation) ·
+          <span style="color:var(--purple);font-weight:700">CLARIFY</span> (opens chat ↗)
+        </div>
+      </div>
+
+    </div><!-- end left-scroll -->
+    <div class="left-footer">
+      <button class="analyze-btn" id="analyzeBtn" onclick="startAnalysis()">
+        ⚡ Analyze Transaction
+      </button>
+    </div>
+    </div><!-- end left-panel -->
+
+    <!-- ── Right Panel ── -->
+    <div class="right-panel">
+
+      <div class="idle-state" id="idleState">
+        <div class="idle-icon">🛡️</div>
+        <div class="idle-title">Ready to analyze</div>
+        <div class="idle-sub">
+          Pick a demo scenario or enter your own transaction. The AI runs 4 specialist agents in parallel — velocity, location, spending, and temporal — then synthesizes a final decision.
+        </div>
+      </div>
+
+      <div class="analysis-panel" id="analysisPanel">
+
+        <!-- Always-visible top bar with reset -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 28px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <span style="font-size:0.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.08em">Analysis Result</span>
+          <button onclick="resetPanel()" style="background:transparent;border:1px solid var(--border2);border-radius:6px;padding:4px 12px;color:var(--muted);font-size:0.75rem;cursor:pointer;transition:all 0.15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--accent)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border2)'">
+            ← New analysis
+          </button>
+        </div>
+
+        <div class="result-header" id="resultHeader" style="display:none">
+          <div class="result-dot" id="resultDot"></div>
+          <div>
+            <div class="result-decision" id="resultDecision"></div>
+            <div class="result-txn-id" id="resultTxnId"></div>
+          </div>
+          <div class="route-chip" id="routeChip"></div>
+        </div>
+
+        <div class="specialist-grid" id="specialistGrid" style="display:none"></div>
+
+        <div class="explanation-block" id="explanationBlock" style="display:none">
+          <div class="explanation-label">Supervisor reasoning</div>
+          <div class="explanation-text" id="explanationText"></div>
+        </div>
+
+        <div class="chat-section">
+          <div class="chat-header" id="chatHeader">
+            <div class="live-dot"></div>
+            Cardholder Verification
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+        </div>
+
+        <div class="chat-input-wrap" id="inputWrap">
+          <div class="chat-input-row">
+            <input type="text" id="userInput"
+              placeholder="Reply to the agent..."
+              onkeydown="if(event.key==='Enter') sendReply()" />
+            <button class="send-btn" id="sendBtn" onclick="sendReply()">Send</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // When served from Lambda (/), use relative URLs — no CORS needed.
+    // When opened as a local file, fall back to the production API.
+    const API_URL = window.location.protocol === "file:"
+      ? "https://wysewao87f.execute-api.us-east-2.amazonaws.com"
+      : "";
+
+    const DOMAIN_ICONS  = { velocity:"⚡", location:"📍", spending:"💳", temporal:"🕐" };
+    const DOMAIN_COLORS = { velocity:"#f97316", location:"#4f6ef7", spending:"#a855f7", temporal:"#eab308" };
+    const DOMAIN_LABELS = { velocity:"Velocity", location:"Location", spending:"Spending", temporal:"Temporal" };
+    const LEVEL_DESC = {
+      HIGH:   { velocity:"Rapid burst detected",   location:"Geographic anomaly",  spending:"Unusual amount",    temporal:"Outside normal hours" },
+      MEDIUM: { velocity:"Slightly elevated",       location:"Minor deviation",     spending:"Somewhat unusual",  temporal:"Borderline timing" },
+      LOW:    { velocity:"Normal frequency",        location:"Consistent location", spending:"Typical amount",    temporal:"Normal hours" },
+    };
+
+    const DECISION_COLORS = {
+      APPROVE:"#22c55e", BLOCK:"#ef4444",
+      REVIEW:"#f97316",  CLARIFICATION_NEEDED:"#a855f7",
+    };
+
+    const DECISION_LABELS = {
+      APPROVE:"Transaction Approved",
+      BLOCK:"Transaction Blocked",
+      REVIEW:"Sent to Human Review",
+      CLARIFICATION_NEEDED:"Verification Required",
+    };
+
+    const LABEL_STYLE = {
+      BLOCK:   { bg:"#1c0a0a", color:"#ef4444", border:"rgba(239,68,68,0.25)" },
+      APPROVE: { bg:"#0a1f14", color:"#22c55e", border:"rgba(34,197,94,0.25)" },
+      CLARIFY: { bg:"#150d1f", color:"#a855f7", border:"rgba(168,85,247,0.25)" },
+      REVIEW:  { bg:"#1c0f05", color:"#f97316", border:"rgba(249,115,22,0.25)" },
+    };
+
+    const DOT_COLOR = { BLOCK:"#ef4444", APPROVE:"#22c55e", CLARIFY:"#a855f7", REVIEW:"#f97316" };
+
+    const SCENARIOS = [
+      { label:"BLOCK",   title:"High-Risk Transaction",        meta:"$1,250 · 2 AM · new city · high ML score",
+        user_id:"user_001", amount:1250.00, merchant_category:"Electronics",  time_of_day:"02:14 AM", city:"Los Angeles, CA",    fraud_score_override:0.73    },
+      { label:"APPROVE", title:"Normal Low-Value Purchase",    meta:"$23 · 8 AM · home city · low ML score",
+        user_id:"user_001", amount:23.50,   merchant_category:"Grocery",       time_of_day:"08:30 AM", city:"Nashville, TN",      fraud_score_override:0.00005 },
+      { label:"APPROVE", title:"High-Spender Normal Pattern",  meta:"$3,500 · 2 PM · consistent with history",
+        user_id:"user_002", amount:3500.00, merchant_category:"Electronics",  time_of_day:"02:00 PM", city:"San Francisco, CA",  fraud_score_override:0.45    },
+      { label:"CLARIFY", title:"Borderline — Needs Verification", meta:"$800 · 11 PM · unusual but plausible",
+        user_id:"user_001", amount:800.00,  merchant_category:"Electronics",  time_of_day:"11:00 PM", city:"Nashville, TN",      fraud_score_override:0.38    },
+      { label:"REVIEW",  title:"Velocity Burst — Card Testing?", meta:"$12 · 5 txns in 10 min · Chicago",
+        user_id:"user_003", amount:12.00,   merchant_category:"Online Retail", time_of_day:"07:09 AM", city:"Chicago, IL",        fraud_score_override:0.55    },
+    ];
+
+    let mode = "preset";
+    let currentScenario = 0;
+    let currentTransactionId = null;
+    let awaitingReply = false;
+    let conversationHistory = [];
+    let currentScore = 0.73;
+
+    // ── Mode toggle ──
+    function setMode(m) {
+      mode = m;
+      document.getElementById("modePreset").classList.toggle("active", m === "preset");
+      document.getElementById("modeCustom").classList.toggle("active", m === "custom");
+      document.getElementById("presetSection").style.display = m === "preset" ? "block" : "none";
+      document.getElementById("editHint").textContent = m === "preset" ? "auto-filled" : "editable";
+
+      const isPreset = m === "preset";
+      document.querySelectorAll(".field-input").forEach(el => {
+        el.disabled = isPreset;
+        el.style.opacity = isPreset ? "0.55" : "1";
+        el.style.cursor = isPreset ? "default" : "auto";
+      });
+
+      // Score section: show slider in preset, show "computed" info in custom
+      document.getElementById("scorePresetView").style.display = isPreset ? "block" : "none";
+      document.getElementById("scoreCustomView").style.display = isPreset ? "none" : "block";
+    }
+
+    // ── Scenario picker ──
+    function renderScenarios() {
+      const list = document.getElementById("scenarioList");
+      list.innerHTML = SCENARIOS.map((s, i) => {
+        const c = LABEL_STYLE[s.label];
+        return `
+          <div class="scenario-card ${i===0?'active':''}" onclick="loadScenario(${i})">
+            <div class="scenario-dot" style="background:${DOT_COLOR[s.label]}"></div>
+            <div class="scenario-info">
+              <div class="scenario-title">${s.title}</div>
+              <div class="scenario-meta">${s.meta}</div>
+            </div>
+            <div class="scenario-badge" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${s.label}</div>
+          </div>`;
+      }).join("");
+    }
+
+    function loadScenario(idx) {
+      currentScenario = idx;
+      const s = SCENARIOS[idx];
+      setField("fUserId", s.user_id);
+      setField("fAmount", s.amount);
+      setSelectValue("fMerchant", s.merchant_category);
+      setField("fTime", s.time_of_day);
+      setField("fCity", s.city);
+      currentScore = s.fraud_score_override;
+      document.getElementById("scoreSlider").value = currentScore;
+      updateScoreDisplay(currentScore);
+      document.getElementById("scoreHint").textContent =
+        `Drag to override · preset value: ${s.fraud_score_override}`;
+      document.querySelectorAll(".scenario-card")
+        .forEach((c, i) => c.classList.toggle("active", i === idx));
+    }
+
+    function setField(id, val) {
+      document.getElementById(id).value = val;
+    }
+
+    function setSelectValue(id, val) {
+      const sel = document.getElementById(id);
+      for (let opt of sel.options) {
+        if (opt.value === val) { sel.value = val; return; }
+      }
+      // add custom option if not found
+      const opt = document.createElement("option");
+      opt.value = val; opt.textContent = val;
+      sel.appendChild(opt);
+      sel.value = val;
+    }
+
+    function updateScore(val) {
+      currentScore = parseFloat(val);
+      updateScoreDisplay(currentScore);
+    }
+
+    function updateScoreDisplay(val) {
+      document.getElementById("displayScore").textContent = val.toFixed(5);
+      document.getElementById("scoreBar").style.width = Math.min(val * 100, 100) + "%";
+      document.getElementById("displayScore").style.color =
+        val < 0.001 ? "var(--green)" : val > 0.7 ? "var(--red)" : "var(--yellow)";
+    }
+
+    // ── Build transaction from form ──
+    function getTransaction() {
+      const txn = {
+        user_id: document.getElementById("fUserId").value.trim() || "user_001",
+        amount: parseFloat(document.getElementById("fAmount").value) || 100,
+        merchant_category: document.getElementById("fMerchant").value,
+        time_of_day: document.getElementById("fTime").value.trim() || "12:00 PM",
+        city: document.getElementById("fCity").value.trim() || "Unknown",
+      };
+      // In preset mode, send the fixed override so routing is predictable.
+      // In custom mode, omit it — the backend classifier computes it from amount + time.
+      if (mode === "preset") txn.fraud_score_override = currentScore;
+      return txn;
+    }
+
+    // ── Analysis ──
+    async function startAnalysis() {
+      document.getElementById("analyzeBtn").disabled = true;
+      document.getElementById("idleState").style.display = "none";
+      document.getElementById("analysisPanel").classList.add("visible");
+      document.getElementById("resultHeader").style.display = "none";
+      document.getElementById("specialistGrid").style.display = "none";
+      document.getElementById("explanationBlock").style.display = "none";
+      document.getElementById("chatHeader").classList.remove("visible");
+      document.getElementById("chatMessages").innerHTML = "";
+      document.getElementById("inputWrap").classList.remove("visible");
+      conversationHistory = [];
+
+      addTyping();
+
+      const txn = getTransaction();
+
+      try {
+        const res = await fetch(API_URL + "/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(txn),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        removeTyping();
+        currentTransactionId = data.transaction_id;
+
+        if (data.decision === "CLARIFICATION_NEEDED") {
+          showResultHeader(data);
+          document.getElementById("chatHeader").classList.add("visible");
+          conversationHistory.push({ role: "agent", content: data.explanation });
+          addAgentMsg(data.explanation);
+          document.getElementById("inputWrap").classList.add("visible");
+          document.getElementById("sendBtn").disabled = false;
+          document.getElementById("userInput").focus();
+          awaitingReply = true;
+        } else {
+          showResultHeader(data);
+          showSpecialists(data.explanation);
+          showExplanation(data.explanation);
+          document.getElementById("inputWrap").classList.remove("visible");
+        }
+      } catch (e) {
+        removeTyping();
+        addAgentMsg(`<span style="color:var(--red)">Error:</span> ${e.message || "Could not reach the API."}`);
+        document.getElementById("inputWrap").classList.remove("visible");
+      }
+    }
+
+    function showResultHeader(data) {
+      const d = data.decision;
+      document.getElementById("resultDot").style.background      = DECISION_COLORS[d] || "#6b7490";
+      document.getElementById("resultDecision").textContent       = DECISION_LABELS[d] || d;
+      document.getElementById("resultDecision").style.color       = DECISION_COLORS[d] || "var(--text)";
+      document.getElementById("resultTxnId").textContent          = data.transaction_id;
+      document.getElementById("routeChip").textContent            =
+        data.routed_to === "auto_approve" ? "AUTO · No LLM" : `AGENT · ${data.latency_ms}ms`;
+      document.getElementById("resultHeader").style.display = "flex";
+    }
+
+    function showSpecialists(explanation) {
+      const match = explanation.match(/\[Specialist signals: ([^\]]+)\]/);
+      if (!match) return;
+      const signals = match[1].split("|").map(s => {
+        const [domain, level] = s.trim().split(":").map(x => x.trim());
+        return { domain: domain.toLowerCase(), level };
+      });
+      const grid = document.getElementById("specialistGrid");
+      grid.innerHTML = signals.map(({ domain, level }) => `
+        <div class="specialist-card">
+          <div class="spec-header">
+            <span class="spec-domain" style="color:${DOMAIN_COLORS[domain]||'#6b7490'}">
+              ${DOMAIN_ICONS[domain]||"●"} ${DOMAIN_LABELS[domain]||domain}
+            </span>
+            <span class="spec-level level-${level}">${level}</span>
+          </div>
+          <div class="spec-finding">${(LEVEL_DESC[level]||{})[domain]||level}</div>
+        </div>`).join("");
+      grid.style.display = "grid";
+    }
+
+    function showExplanation(explanation) {
+      const clean = explanation.replace(/\[Specialist signals:[^\]]+\]/, "").trim();
+      if (!clean) return;
+      document.getElementById("explanationText").textContent = clean;
+      document.getElementById("explanationBlock").style.display = "block";
+    }
+
+    // ── Reply ──
+    async function sendReply() {
+      if (!awaitingReply) return;
+      const input = document.getElementById("userInput");
+      const reply = input.value.trim();
+      if (!reply) return;
+
+      input.value = "";
+      document.getElementById("sendBtn").disabled = true;
+      awaitingReply = false;
+
+      addUserMsg(reply);
+      conversationHistory.push({ role: "user", content: reply });
+      addTyping();
+
+      try {
+        const res = await fetch(API_URL + "/reply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transaction_id: currentTransactionId,
+            user_reply: reply,
+            transaction: getTransaction(),
+            history: conversationHistory.slice(0, -1),
+          }),
+        });
+        const data = await res.json();
+        removeTyping();
+
+        const lat = data.latency_ms >= 1000
+          ? `${(data.latency_ms/1000).toFixed(1)}s` : `${data.latency_ms}ms`;
+
+        if (data.decision) {
+          const c = DECISION_COLORS[data.decision] || "#6b7490";
+          const badge = `<span class="badge-inline" style="background:${c}20;color:${c};border:1px solid ${c}40">${data.decision}</span>`;
+          addAgentMsg(`${badge}<br>${data.agent_message}<br><small style="color:var(--muted)">${lat}</small>`);
+          document.getElementById("inputWrap").classList.remove("visible");
+        } else {
+          conversationHistory.push({ role: "agent", content: data.agent_message });
+          addAgentMsg(`${data.agent_message}<br><small style="color:var(--muted)">${lat}</small>`);
+          document.getElementById("sendBtn").disabled = false;
+          document.getElementById("userInput").focus();
+          awaitingReply = true;
+        }
+      } catch (e) {
+        removeTyping();
+        addAgentMsg("Error processing your reply. Please try again.");
+        document.getElementById("sendBtn").disabled = false;
+        awaitingReply = true;
+      }
+    }
+
+    // ── DOM helpers ──
+    function addAgentMsg(html) {
+      const m = document.getElementById("chatMessages");
+      m.innerHTML += `<div class="msg agent"><div class="msg-label">FraudGuard Agent</div><div class="msg-bubble">${html}</div></div>`;
+      m.scrollTop = m.scrollHeight;
+    }
+
+    function addUserMsg(text) {
+      const m = document.getElementById("chatMessages");
+      m.innerHTML += `<div class="msg user"><div class="msg-label">Cardholder</div><div class="msg-bubble">${text}</div></div>`;
+      m.scrollTop = m.scrollHeight;
+    }
+
+    function addTyping() {
+      const m = document.getElementById("chatMessages");
+      m.innerHTML += `<div class="msg agent typing" id="typingIndicator"><div class="msg-label">FraudGuard Agent</div><div class="msg-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`;
+      m.scrollTop = m.scrollHeight;
+    }
+
+    function removeTyping() {
+      const t = document.getElementById("typingIndicator");
+      if (t) t.remove();
+    }
+
+    function resetPanel() {
+      document.getElementById("analysisPanel").classList.remove("visible");
+      document.getElementById("idleState").style.display = "flex";
+      document.getElementById("chatMessages").innerHTML = "";
+      document.getElementById("chatHeader").classList.remove("visible");
+      document.getElementById("inputWrap").classList.remove("visible");
+      document.getElementById("resultHeader").style.display = "none";
+      document.getElementById("specialistGrid").style.display = "none";
+      document.getElementById("explanationBlock").style.display = "none";
+      document.getElementById("analyzeBtn").disabled = false;
+      currentTransactionId = null;
+      awaitingReply = false;
+      conversationHistory = [];
+    }
+
+    // init
+    renderScenarios();
+    loadScenario(0);
+    setMode("preset");
+  </script>
+</body>
+</html>
