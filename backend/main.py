@@ -4,12 +4,17 @@ Local dev: uvicorn main:app --reload --port 8000
 Lambda:    see lambda_function.py
 """
 
+import json
+import logging
 import os
 import sys
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+log = logging.getLogger("fraud_agent")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -116,6 +121,7 @@ def analyze_transaction(req: TransactionRequest):
         try:
             fraud_score = score(features)
         except Exception as e:
+            log.error(json.dumps({"event": "classifier_error", "transaction_id": transaction_id, "error": str(e)}))
             raise HTTPException(status_code=500, detail=f"Classifier error: {e}")
 
     routing = route(fraud_score)
@@ -129,6 +135,17 @@ def analyze_transaction(req: TransactionRequest):
         "city": req.city,
         "fraud_score": fraud_score,
     }
+
+    log.info(json.dumps({
+        "event": "request",
+        "transaction_id": transaction_id,
+        "user_id": req.user_id,
+        "amount": req.amount,
+        "merchant_category": req.merchant_category,
+        "city": req.city,
+        "fraud_score": round(fraud_score, 6),
+        "routing": routing,
+    }))
 
     if routing == "auto_approve":
         decision = "APPROVED"
@@ -148,9 +165,20 @@ def analyze_transaction(req: TransactionRequest):
             decision = result["decision"]
             explanation = result["explanation"]
         except Exception as e:
+            log.error(json.dumps({"event": "agent_error", "transaction_id": transaction_id, "error": str(e)}))
             raise HTTPException(status_code=500, detail=f"Agent error: {e}")
 
     latency_ms = int((time.time() - start) * 1000)
+
+    log.info(json.dumps({
+        "event": "response",
+        "transaction_id": transaction_id,
+        "user_id": req.user_id,
+        "decision": decision,
+        "fraud_score": round(fraud_score, 6),
+        "routed_to": routing,
+        "latency_ms": latency_ms,
+    }))
 
     return TransactionResponse(
         transaction_id=transaction_id,

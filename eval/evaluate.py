@@ -19,19 +19,19 @@ from datetime import datetime
 
 TEST_CASES = [
     # ── AUTO-APPROVE (score < 0.001, no LLM call) ──
-    {"label": "auto_approve", "expected": "APPROVE", "input": {
+    {"label": "auto_approve", "expected_set": {"APPROVE", "APPROVED"}, "input": {
         "user_id": "user_001", "amount": 23.50, "merchant_category": "Grocery",
         "time_of_day": "08:30 AM", "city": "Nashville, TN", "fraud_score_override": 0.0001}},
-    {"label": "auto_approve", "expected": "APPROVE", "input": {
+    {"label": "auto_approve", "expected_set": {"APPROVE", "APPROVED"}, "input": {
         "user_id": "user_001", "amount": 12.99, "merchant_category": "Streaming",
         "time_of_day": "09:00 AM", "city": "Nashville, TN", "fraud_score_override": 0.00005}},
-    {"label": "auto_approve", "expected": "APPROVE", "input": {
+    {"label": "auto_approve", "expected_set": {"APPROVE", "APPROVED"}, "input": {
         "user_id": "user_002", "amount": 500.00, "merchant_category": "Electronics",
         "time_of_day": "10:00 AM", "city": "San Francisco, CA", "fraud_score_override": 0.0002}},
-    {"label": "auto_approve", "expected": "APPROVE", "input": {
+    {"label": "auto_approve", "expected_set": {"APPROVE", "APPROVED"}, "input": {
         "user_id": "user_001", "amount": 45.00, "merchant_category": "Restaurant",
         "time_of_day": "07:45 PM", "city": "Nashville, TN", "fraud_score_override": 0.00008}},
-    {"label": "auto_approve", "expected": "APPROVE", "input": {
+    {"label": "auto_approve", "expected_set": {"APPROVE", "APPROVED"}, "input": {
         "user_id": "user_002", "amount": 1200.00, "merchant_category": "Electronics",
         "time_of_day": "04:00 PM", "city": "San Francisco, CA", "fraud_score_override": 0.0003}},
 

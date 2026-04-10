@@ -10,6 +10,7 @@
 #   ./deploy.sh 123456789012 us-east-2
 
 set -e
+export AWS_PAGER=""   # disable interactive pager for all AWS CLI calls
 
 ACCOUNT=${1:-$(aws sts get-caller-identity --query Account --output text)}
 REGION=${2:-us-east-2}
@@ -26,7 +27,7 @@ aws ecr describe-repositories --repository-names "$REPO" --region "$REGION" 2>/d
   aws ecr create-repository --repository-name "$REPO" --region "$REGION"
 
 echo "==> Building Docker image..."
-docker build --platform linux/amd64 -t "$REPO" .
+docker build --platform linux/amd64 --provenance=false -t "$REPO" .
 docker tag "${REPO}:latest" "$IMAGE"
 
 echo "==> Pushing to ECR..."

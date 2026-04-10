@@ -1,0 +1,128 @@
+{
+  "high_fraud_night": {
+    "runs": 3,
+    "decisions": [
+      "BLOCK",
+      "BLOCK",
+      "BLOCK"
+    ],
+    "decision_distribution": {
+      "BLOCK": 3
+    },
+    "consistency_pct": 100.0,
+    "scores": [
+      0.92,
+      0.92,
+      0.92
+    ],
+    "score_stable": true,
+    "grounded_pct": 100.0,
+    "all_correct": true,
+    "latency_avg_ms": 12783
+  },
+  "legit_big_spender": {
+    "runs": 3,
+    "decisions": [
+      "APPROVE",
+      "APPROVE",
+      "APPROVE"
+    ],
+    "decision_distribution": {
+      "APPROVE": 3
+    },
+    "consistency_pct": 100.0,
+    "scores": [
+      0.45,
+      0.45,
+      0.45
+    ],
+    "score_stable": true,
+    "grounded_pct": 100.0,
+    "all_correct": true,
+    "latency_avg_ms": 10329
+  },
+  "borderline_review": {
+    "runs": 3,
+    "decisions": [
+      "CLARIFICATION_NEEDED",
+      "CLARIFICATION_NEEDED",
+      "REVIEW"
+    ],
+    "decision_distribution": {
+      "CLARIFICATION_NEEDED": 2,
+      "REVIEW": 1
+    },
+    "consistency_pct": 66.7,
+    "scores": [
+      0.38,
+      0.38,
+      0.38
+    ],
+    "score_stable": true,
+    "grounded_pct": 100.0,
+    "all_correct": true,
+    "latency_avg_ms": 11878
+  },
+  "impossible_travel": {
+    "runs": 3,
+    "decisions": [
+      "BLOCK",
+      "BLOCK",
+      "CLARIFICATION_NEEDED"
+    ],
+    "decision_distribution": {
+      "BLOCK": 2,
+      "CLARIFICATION_NEEDED": 1
+    },
+    "consistency_pct": 66.7,
+    "scores": [
+      0.75,
+      0.75,
+      0.75
+    ],
+    "score_stable": true,
+    "grounded_pct": 100.0,
+    "all_correct": false,
+    "latency_avg_ms": 12525
+  },
+  "unknown_user_high_risk": {
+    "runs": 3,
+    "decisions": [
+      "CLARIFICATION_NEEDED",
+      "CLARIFICATION_NEEDED"
+    ],
+    "decision_distribution": {
+      "CLARIFICATION_NEEDED": 2
+    },
+    "consistency_pct": 100.0,
+    "scores": [
+      0.65,
+      0.65
+    ],
+    "score_stable": true,
+    "grounded_pct": 0.0,
+    "all_correct": true,
+    "latency_avg_ms": 11592
+  },
+  "auto_approve_fast": {
+    "runs": 3,
+    "decisions": [
+      "APPROVED",
+      "APPROVED",
+      "APPROVED"
+    ],
+    "decision_distribution": {
+      "APPROVED": 3
+    },
+    "consistency_pct": 100.0,
+    "scores": [
+      0.0001,
+      0.0001,
+      0.0001
+    ],
+    "score_stable": true,
+    "grounded_pct": 100.0,
+    "all_correct": true,
+    "latency_avg_ms": 1126
+  }
+}
