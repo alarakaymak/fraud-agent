@@ -164,6 +164,19 @@ def analyze_transaction(req: TransactionRequest):
             })
             decision = result["decision"]
             explanation = result["explanation"]
+            log.info(json.dumps({
+                "event": "agent_trace",
+                "transaction_id": transaction_id,
+                "velocity_signal": result.get("velocity_report", {}).get("risk", "unknown"),
+                "location_signal": result.get("location_report", {}).get("risk", "unknown"),
+                "spending_signal": result.get("spending_report", {}).get("risk", "unknown"),
+                "temporal_signal": result.get("temporal_report", {}).get("risk", "unknown"),
+                "velocity_detail": result.get("velocity_report", {}).get("detail", ""),
+                "location_detail": result.get("location_report", {}).get("detail", ""),
+                "spending_detail": result.get("spending_report", {}).get("detail", ""),
+                "temporal_detail": result.get("temporal_report", {}).get("detail", ""),
+                "supervisor_decision": decision,
+            }))
         except Exception as e:
             log.error(json.dumps({"event": "agent_error", "transaction_id": transaction_id, "error": str(e)}))
             raise HTTPException(status_code=500, detail=f"Agent error: {e}")
