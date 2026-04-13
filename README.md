@@ -2,6 +2,8 @@
 
 Final project for DS5730 (Generative AI in Practice) at Vanderbilt University.
 
+**Live demo**: https://wysewao87f.execute-api.us-east-2.amazonaws.com
+
 ## Overview
 
 FraudGuard is a multi-agent fraud detection system that combines a supervised ML classifier with a LangGraph supervisor agent to analyze financial transactions in real time. The system produces a structured decision (APPROVE / REVIEW / BLOCK / CLARIFICATION_NEEDED) backed by four parallel specialist agents and an XGBoost fraud-probability score.
@@ -129,9 +131,9 @@ Analyze a transaction for fraud.
 {
   "user_id": "user_001",
   "amount": 1200.00,
-  "merchant": "Electronics Store",
-  "location": "New York, NY",
-  "timestamp": "2024-01-15T14:30:00",
+  "merchant_category": "Electronics",
+  "time_of_day": "02:14 AM",
+  "city": "Los Angeles, CA",
   "fraud_score_override": 0.85
 }
 ```
