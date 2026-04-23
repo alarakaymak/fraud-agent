@@ -124,7 +124,12 @@ def analyze_transaction(req: TransactionRequest):
             log.error(json.dumps({"event": "classifier_error", "transaction_id": transaction_id, "error": str(e)}))
             raise HTTPException(status_code=500, detail=f"Classifier error: {e}")
 
-    routing = route(fraud_score)
+    # Custom input (no override) always goes to agents — the XGBoost score is
+    # unreliable without V1–V28 PCA features, so skip auto-approve routing.
+    if req.fraud_score_override is not None:
+        routing = route(fraud_score)
+    else:
+        routing = "agent"
 
     transaction = {
         "transaction_id": transaction_id,

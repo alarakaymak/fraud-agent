@@ -98,16 +98,7 @@ SYSTEM_PROMPT = SUPERVISOR_SYSTEM_PROMPT
 # ---------------------------------------------------------------------------
 
 def route_node(state: FraudState) -> dict:
-    """Auto-approve low-score transactions; dispatch the rest to specialists."""
-    txn = state["transaction"]
-    score = txn["fraud_score"]
-
-    if score < AUTO_APPROVE_THRESHOLD:
-        explanation = f"Auto-approved: fraud score {score:.5f} is below threshold {AUTO_APPROVE_THRESHOLD}."
-        log_decision(txn["transaction_id"], txn["user_id"], score,
-                     "APPROVE", explanation, [])
-        return {"decision": "APPROVE", "explanation": explanation}
-
+    """Routing is handled by main.py before reaching the agent; always dispatch."""
     return {}
 
 
