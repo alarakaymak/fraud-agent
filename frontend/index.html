@@ -1003,8 +1003,9 @@
 
         if (data.decision === "CLARIFICATION_NEEDED") {
           document.getElementById("chatHeader").classList.add("visible");
-          conversationHistory.push({ role: "agent", content: data.explanation });
-          addAgentMsg(data.explanation);
+          const cardholderQuestion = data.explanation.replace(/\[Specialist signals:[^\]]+\]/, "").trim();
+          conversationHistory.push({ role: "agent", content: cardholderQuestion });
+          addAgentMsg(cardholderQuestion);
           document.getElementById("inputWrap").classList.add("visible");
           document.getElementById("sendBtn").disabled = false;
           document.getElementById("userInput").focus();

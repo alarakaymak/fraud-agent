@@ -111,7 +111,8 @@ Your job:
 1. Read all specialist reports carefully.
 2. Weigh the signals together — multiple HIGH signals = strong fraud evidence.
 3. Make ONE final decision:
-   - BLOCK                : Strong converging evidence of fraud (2+ HIGH signals, or score > 0.8)
+   - BLOCK                : Strong converging evidence of fraud. MUST use when 2 or more specialists \
+report HIGH risk, regardless of score. Also use when score > 0.8 with any HIGH signal.
    - APPROVE              : All active specialist signals are LOW, score < 0.6, and the transaction \
 fits the user's established pattern. Skipped specialists were irrelevant — their absence is not \
 a reason to withhold approval.
