@@ -29,7 +29,7 @@ Transaction Input
   Final Decision + Explanation
 ```
 
-- **Supervisor**: Claude 3.5 Sonnet via Amazon Bedrock. Orchestrates specialist agents and synthesizes the final decision.
+- **Supervisor**: Claude 3.5 Haiku via Amazon Bedrock. Orchestrates specialist agents and synthesizes the final decision.
 - **Velocity Agent**: Detects rapid successive transactions from the same user (burst patterns).
 - **Location Agent**: Flags impossible travel — transactions physically separated beyond what travel time allows.
 - **Spending Agent**: Identifies anomalous spend amounts relative to a user's historical behavior.
@@ -41,7 +41,7 @@ Transaction Input
 | Layer | Technology |
 |---|---|
 | Agent framework | LangGraph (supervisor pattern) |
-| LLM | Claude 3.5 Sonnet (Amazon Bedrock) |
+| LLM | Claude 3.5 Haiku (Amazon Bedrock) |
 | ML model | XGBoost + IsotonicRegression |
 | API | FastAPI + Mangum (Lambda adapter) |
 | Compute | AWS Lambda (container image) |
@@ -78,7 +78,7 @@ fraud-agent/
 ### Prerequisites
 
 - Python 3.12+
-- AWS account with Bedrock access (Claude 3.5 Sonnet enabled in us-east-1)
+- AWS account with Bedrock access (Claude 3.5 Haiku enabled in us-east-2)
 - AWS credentials configured (`~/.aws/credentials` or environment variables)
 - Docker (for Lambda deployment)
 
