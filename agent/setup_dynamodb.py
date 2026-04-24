@@ -36,13 +36,14 @@ MOCK_HISTORY = {
         {"amount": 500.00,  "merchant": "Amazon",           "time": "10:00 AM", "city": "San Francisco, CA", "status": "approved", "timestamp": NOW - 86400 * 2},
         {"amount": 1200.00, "merchant": "Dell",             "time": "04:00 PM", "city": "San Francisco, CA", "status": "approved", "timestamp": NOW - 86400 * 3},
     ],
-    # user_003: small spender, burst of 4 transactions in last 10 minutes — card testing pattern
+    # user_003: small spender, burst of 5 transactions within the last 15 minutes — card testing pattern
+    # Timestamps within 15 min so they stay in the 60-min velocity window for ~45 min after seeding
     "user_003": [
-        {"amount": 15.00,  "merchant": "Starbucks",         "time": "07:00 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 300},
-        {"amount": 8.50,   "merchant": "McDonald's",        "time": "07:02 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 480},
-        {"amount": 22.00,  "merchant": "CVS Pharmacy",      "time": "07:04 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 540},
-        {"amount": 65.00,  "merchant": "Uber",              "time": "07:06 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 590},
-        {"amount": 30.00,  "merchant": "Trader Joe's",      "time": "07:08 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 610},
+        {"amount": 15.00,  "merchant": "Starbucks",         "time": "07:00 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 120},
+        {"amount": 8.50,   "merchant": "McDonald's",        "time": "07:02 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 240},
+        {"amount": 22.00,  "merchant": "CVS Pharmacy",      "time": "07:04 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 360},
+        {"amount": 65.00,  "merchant": "Uber",              "time": "07:06 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 480},
+        {"amount": 30.00,  "merchant": "Trader Joe's",      "time": "07:08 AM", "city": "Chicago, IL", "status": "approved", "timestamp": NOW - 600},
     ],
 }
 

@@ -31,7 +31,6 @@ from tools import (
     lookup_user_history,
     log_decision,
 )
-from scorer import AUTO_APPROVE_THRESHOLD
 from specialists import (
     run_velocity_specialist,
     run_location_specialist,
@@ -111,7 +110,7 @@ def dispatch_node(state: FraudState) -> dict:
     user_id = txn["user_id"]
 
     # Fetch raw tool data (fast DynamoDB/mock calls)
-    velocity_raw  = check_velocity.invoke({"user_id": user_id, "window_minutes": 10})
+    velocity_raw  = check_velocity.invoke({"user_id": user_id, "window_minutes": 60})
     location_raw  = check_location.invoke({"user_id": user_id, "current_city": txn.get("city", "Unknown")})
     spending_raw  = analyze_spending_pattern.invoke({"user_id": user_id, "current_amount": txn["amount"]})
     temporal_raw  = check_temporal_pattern.invoke({"user_id": user_id, "current_time_of_day": txn["time_of_day"]})

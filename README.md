@@ -172,7 +172,7 @@ python evaluate.py
 Outputs `eval_results.json` with accuracy, per-class breakdown, and p95 latency.
 
 The 40 test cases cover:
-- Known users (user_001 through user_004) with varied transaction patterns
+- Known users (user_001, user_002, user_003) with varied transaction patterns
 - New/unknown users (no history)
 - Impossible travel scenarios
 - High-velocity burst transactions
