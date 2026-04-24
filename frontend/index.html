@@ -667,7 +667,8 @@
             </div>
             <div class="form-field">
               <label class="field-label">City</label>
-              <input class="field-input" id="fCity" type="text" placeholder="e.g. Nashville, TN" value="Los Angeles, CA" />
+              <input class="field-input" id="fCity" type="text" placeholder="e.g. Nashville, TN" value="Los Angeles, CA" oninput="clearCityError()" />
+              <div id="cityError" style="display:none;color:#dc2626;font-size:0.72rem;margin-top:4px;">Please enter a city (e.g. Nashville, TN)</div>
             </div>
           </div>
         </div>
@@ -939,7 +940,21 @@
       return txn;
     }
 
+    function clearCityError() {
+      document.getElementById("cityError").style.display = "none";
+      document.getElementById("fCity").style.borderColor = "";
+    }
+
     async function startAnalysis() {
+      if (mode === "custom") {
+        const city = document.getElementById("fCity").value.trim();
+        if (city.length < 2) {
+          document.getElementById("cityError").style.display = "block";
+          document.getElementById("fCity").style.borderColor = "#dc2626";
+          document.getElementById("fCity").focus();
+          return;
+        }
+      }
       document.getElementById("analyzeBtn").disabled = true;
       document.getElementById("idleState").style.display = "none";
       document.getElementById("analysisPanel").classList.add("visible");
