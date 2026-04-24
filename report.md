@@ -68,7 +68,7 @@ Fraud detection was chosen as the domain because it sits at an interesting inter
 
 The four-dimensional analysis (velocity, location, spending, temporal) was also a natural fit for a multi-agent architecture. Each dimension requires different data and different reasoning, and they are largely independent of each other. Running them in parallel rather than sequentially keeps latency reasonable while still getting the full picture.
 
-Claude 3.5 Sonnet was used for the supervisor and the four specialist agents because the task requires genuine reasoning about conflicting signals, not just text generation. For the cardholder conversation endpoint, Claude 3.5 Haiku was used instead — the conversation task is simpler and response speed matters more in that context.
+Claude 3.5 Haiku was used for all LLM components — triage, specialist agents, supervisor, and the cardholder conversation endpoint. Haiku was chosen over Sonnet for cost efficiency and latency: the structured nature of the specialist reports and the well-defined decision criteria mean the task does not require Sonnet-level reasoning. The supervisor prompt is specific enough that Haiku reliably follows the decision rules without needing a larger model's judgment.
 
 Amazon Bedrock was the natural choice given that the rest of the infrastructure runs on AWS. It avoids managing a separate API key service and keeps IAM role-based access consistent across the system.
 

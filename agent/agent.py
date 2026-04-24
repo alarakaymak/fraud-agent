@@ -112,9 +112,16 @@ Your job:
 2. Weigh the signals together — multiple HIGH signals = strong fraud evidence.
 3. Make ONE final decision:
    - BLOCK                : Strong converging evidence of fraud (2+ HIGH signals, or score > 0.8)
-   - APPROVE              : Evidence clearly supports legitimacy (all LOW signals, plausible history, score < 0.6)
-   - REVIEW               : Mixed signals — escalate to human analyst
-   - CLARIFICATION_NEEDED : One targeted question to the cardholder would resolve ambiguity
+   - APPROVE              : All active specialist signals are LOW, score < 0.6, and the transaction \
+fits the user's established pattern. Skipped specialists were irrelevant — their absence is not \
+a reason to withhold approval.
+   - CLARIFICATION_NEEDED : Ambiguous — the cardholder can resolve it with one question. Use when \
+the transaction is in a known or home city, score is moderate (0.30–0.65), and the HIGH signal \
+is spending or temporal (unusual amount or unusual time the cardholder can confirm). \
+Do NOT use if the HIGH signal is velocity — a burst of transactions cannot be explained by \
+the cardholder and should go to REVIEW instead.
+   - REVIEW               : Conflicting signals with no clear resolution, HIGH velocity signal, \
+unknown user, or multiple MEDIUM/HIGH signals without a single obvious question to ask.
 
    IMPORTANT: LOW signals from specialists reflect what the data shows — but if a specialist \
 reports LOW simply because the user has no transaction history, treat that as uncertain, \
@@ -261,7 +268,7 @@ def synthesize_node(state: FraudState) -> dict:
     ])
 
     if skipped:
-        findings_text += f"\n\n[Specialists not dispatched for this transaction: {', '.join(skipped)}]"
+        findings_text += f"\n\n[Triage deemed these dimensions irrelevant for this transaction type and skipped them: {', '.join(skipped)}. Treat skipped specialists as not applicable, not as unknown risk.]"
 
     high_count   = sum(1 for r in reports if r.get("risk_level") == "HIGH")
     medium_count = sum(1 for r in reports if r.get("risk_level") == "MEDIUM")
