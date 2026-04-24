@@ -112,9 +112,13 @@ Your job:
 2. Weigh the signals together — multiple HIGH signals = strong fraud evidence.
 3. Make ONE final decision:
    - BLOCK                : Strong converging evidence of fraud (2+ HIGH signals, or score > 0.8)
-   - APPROVE              : Evidence clearly supports legitimacy (all LOW, plausible history)
-   - REVIEW               : Mixed signals — escalate to human analyst
+   - APPROVE              : Evidence clearly supports legitimacy (all LOW signals AND score < 0.35)
+   - REVIEW               : Mixed signals, or any signal is MEDIUM/HIGH, or score >= 0.35 with uncertain context
    - CLARIFICATION_NEEDED : One targeted question to the cardholder would resolve ambiguity
+
+   IMPORTANT: Never APPROVE if the ML score is >= 0.35. A score in the 0.35–0.79 range \
+always warrants at least REVIEW, even when specialist signals are all LOW — low signals \
+may reflect missing history rather than confirmed legitimacy.
 
 4. Call the appropriate tool: block_transaction, approve_transaction, review_transaction, \
 or request_clarification.
