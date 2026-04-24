@@ -4,23 +4,25 @@ Fraud Detection — Supervisor Multi-Agent System
 Graph flow:
   START → route_node
     ├── auto_approve (score < threshold) → END
-    └── dispatch → runs 4 specialist agents in parallel
-                        ↓
-                   synthesize_node (supervisor decides)
-                        ↓
-                   END  or  CLARIFICATION_NEEDED → END
+    └── triage_node  (LLM selects relevant specialists)
+              ↓
+         dispatch_node (runs selected specialists in parallel)
+              ↓
+         synthesize_node (supervisor decides)
+              ↓
+         END
 """
 
 import json
 import operator
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Annotated, Any, Sequence, TypedDict
+from typing import Annotated, Sequence, TypedDict
 
 from langchain_aws import ChatBedrock
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
 
 from tools import (
     ALL_TOOLS,
@@ -28,7 +30,6 @@ from tools import (
     check_location,
     analyze_spending_pattern,
     check_temporal_pattern,
-    lookup_user_history,
     log_decision,
 )
 from specialists import (
@@ -46,7 +47,11 @@ class FraudState(TypedDict):
     transaction: dict
     messages: Annotated[Sequence[BaseMessage], operator.add]
 
-    # Specialist findings (populated in parallel)
+    # Triage decision — which specialists to run
+    specialist_selection: dict   # e.g. {"velocity": True, "location": False, ...}
+    triage_reasoning: str        # short explanation of why those specialists were chosen
+
+    # Specialist findings (populated selectively)
     velocity_report: dict
     location_report: dict
     spending_report: dict
@@ -58,29 +63,66 @@ class FraudState(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Supervisor LLM (synthesizes specialist findings)
+# Triage LLM — decides which specialists to dispatch
+# ---------------------------------------------------------------------------
+
+TRIAGE_SYSTEM_PROMPT = """\
+You are a fraud detection triage specialist. Given a transaction, decide which \
+specialist analysts should investigate it.
+
+Available specialists:
+- velocity  : Detects burst patterns — many transactions in a short window (card testing).
+              Relevant when: online retail, low amounts, score > 0.4, repeated merchants.
+- location  : Detects impossible travel or new cities inconsistent with user history.
+              Relevant when: unfamiliar city, travel merchants, recent location change.
+- spending  : Detects anomalous amounts relative to the user's historical average.
+              Relevant when: large purchases, unusual merchant category, any significant amount.
+- temporal  : Detects unusual transaction times for this specific user.
+              Relevant when: late-night transactions (10 PM–6 AM), weekend vs weekday patterns.
+
+Rules:
+- Always include spending — amount context is almost always relevant.
+- Include at least 2 specialists total.
+- Do not include specialists that add no signal for this transaction type.
+
+Respond with ONLY a JSON object and a one-sentence reason, like:
+{"selection": {"velocity": true, "location": false, "spending": true, "temporal": true}, \
+"reason": "Late-night timing and high amount are the main signals; location is same city."}\
+"""
+
+triage_llm = ChatBedrock(
+    model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-2"),
+)
+
+
+# ---------------------------------------------------------------------------
+# Supervisor LLM — synthesizes specialist findings into a final decision
 # ---------------------------------------------------------------------------
 
 SUPERVISOR_SYSTEM_PROMPT = """\
 You are the lead fraud detection supervisor at a financial institution.
 
-Four specialist analysts have independently investigated a suspicious transaction \
-and each produced a risk report. Your job is to:
+Specialist analysts have investigated a suspicious transaction and produced risk reports. \
+Not all specialists may have been dispatched — only those relevant to this transaction type \
+were selected by the triage system. Focus on the reports provided.
 
-1. Read all four specialist reports carefully.
+Your job:
+1. Read all specialist reports carefully.
 2. Weigh the signals together — multiple HIGH signals = strong fraud evidence.
-3. Make ONE final decision from these options:
-   - BLOCK       : Strong converging evidence of fraud (2+ HIGH signals, or 1 HIGH + classifier score > 0.8)
-   - APPROVE     : Evidence clearly supports legitimacy (all LOW/MEDIUM, plausible explanations)
-   - REVIEW      : Mixed signals, cannot decide confidently — escalate to human
+3. Make ONE final decision:
+   - BLOCK                : Strong converging evidence of fraud (2+ HIGH signals, or score > 0.8)
+   - APPROVE              : Evidence clearly supports legitimacy (all LOW, plausible history)
+   - REVIEW               : Mixed signals — escalate to human analyst
    - CLARIFICATION_NEEDED : One targeted question to the cardholder would resolve ambiguity
 
-4. Call the appropriate tool: block_transaction, approve_transaction, review_transaction, or request_clarification.
+4. Call the appropriate tool: block_transaction, approve_transaction, review_transaction, \
+or request_clarification.
 
-Be decisive. Explain your reasoning by referencing the specialist findings.\
+Be decisive. Reference the specific specialist findings in your explanation.\
 """
 
-llm = ChatBedrock(
+supervisor_llm = ChatBedrock(
     model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0",
     region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-2"),
 ).bind_tools([t for t in ALL_TOOLS if t.name in (
@@ -97,32 +139,77 @@ SYSTEM_PROMPT = SUPERVISOR_SYSTEM_PROMPT
 # ---------------------------------------------------------------------------
 
 def route_node(state: FraudState) -> dict:
-    """Routing is handled by main.py before reaching the agent; always dispatch."""
+    """Routing is handled by main.py before reaching the agent; always triage."""
     return {}
+
+
+def triage_node(state: FraudState) -> dict:
+    """
+    LLM-driven triage: decide which specialist agents are relevant for this
+    transaction type. Uses Claude Haiku for speed.
+    """
+    txn = state["transaction"]
+    prompt = (
+        f"Transaction: ${txn['amount']:.2f} at {txn['merchant_category']}, "
+        f"{txn['time_of_day']}, city: {txn.get('city', 'Unknown')}. "
+        f"User: {txn['user_id']}. ML fraud score: {txn['fraud_score']:.4f}."
+    )
+
+    try:
+        response = triage_llm.invoke([
+            SystemMessage(content=TRIAGE_SYSTEM_PROMPT),
+            HumanMessage(content=prompt),
+        ])
+        match = re.search(r'\{.*\}', response.content, re.DOTALL)
+        parsed = json.loads(match.group()) if match else {}
+        selection = parsed.get("selection", {})
+        reason = parsed.get("reason", "")
+    except Exception:
+        selection = {}
+        reason = "Triage failed — defaulting to all specialists."
+
+    # Spending always runs; enforce minimum of 2 specialists
+    selection["spending"] = True
+    if sum(1 for v in selection.values() if v) < 2:
+        selection = {"velocity": True, "location": True, "spending": True, "temporal": True}
+        reason = reason or "Minimum specialist threshold enforced."
+
+    return {"specialist_selection": selection, "triage_reasoning": reason}
 
 
 def dispatch_node(state: FraudState) -> dict:
     """
-    Fetch raw data for all specialists, then run them in parallel threads.
-    Each specialist is a focused LLM call with 2-3 relevant data points.
+    Run only the specialists selected by triage, in parallel.
     """
     txn = state["transaction"]
     user_id = txn["user_id"]
+    selection = state.get("specialist_selection", {
+        "velocity": True, "location": True, "spending": True, "temporal": True
+    })
 
-    # Fetch raw tool data (fast DynamoDB/mock calls)
-    velocity_raw  = check_velocity.invoke({"user_id": user_id, "window_minutes": 60})
-    location_raw  = check_location.invoke({"user_id": user_id, "current_city": txn.get("city", "Unknown")})
-    spending_raw  = analyze_spending_pattern.invoke({"user_id": user_id, "current_amount": txn["amount"]})
-    temporal_raw  = check_temporal_pattern.invoke({"user_id": user_id, "current_time_of_day": txn["time_of_day"]})
+    # Fetch raw DynamoDB/tool data only for selected specialists
+    raw_data = {}
+    if selection.get("velocity"):
+        raw_data["velocity"] = check_velocity.invoke({"user_id": user_id, "window_minutes": 60})
+    if selection.get("location"):
+        raw_data["location"] = check_location.invoke({"user_id": user_id, "current_city": txn.get("city", "Unknown")})
+    if selection.get("spending"):
+        raw_data["spending"] = analyze_spending_pattern.invoke({"user_id": user_id, "current_amount": txn["amount"]})
+    if selection.get("temporal"):
+        raw_data["temporal"] = check_temporal_pattern.invoke({"user_id": user_id, "current_time_of_day": txn["time_of_day"]})
 
-    # Run 4 specialist LLM calls in parallel
+    specialist_runners = {
+        "velocity": run_velocity_specialist,
+        "location": run_location_specialist,
+        "spending": run_spending_specialist,
+        "temporal": run_temporal_specialist,
+    }
+
     results = {}
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {
-            executor.submit(run_velocity_specialist, txn, velocity_raw):  "velocity",
-            executor.submit(run_location_specialist, txn, location_raw):  "location",
-            executor.submit(run_spending_specialist, txn, spending_raw):  "spending",
-            executor.submit(run_temporal_specialist, txn, temporal_raw):  "temporal",
+            executor.submit(specialist_runners[domain], txn, raw_data[domain]): domain
+            for domain in raw_data
         }
         for future in as_completed(futures):
             domain = futures[future]
@@ -135,27 +222,32 @@ def dispatch_node(state: FraudState) -> dict:
                 }
 
     return {
-        "velocity_report": results["velocity"],
-        "location_report": results["location"],
-        "spending_report": results["spending"],
-        "temporal_report": results["temporal"],
+        "velocity_report": results.get("velocity", {}),
+        "location_report": results.get("location", {}),
+        "spending_report": results.get("spending", {}),
+        "temporal_report": results.get("temporal", {}),
     }
 
 
 def synthesize_node(state: FraudState) -> dict:
     """
-    Supervisor reads all specialist reports and makes the final decision
-    by calling one of the 4 decision tools.
+    Supervisor reads specialist reports and makes the final decision.
+    Only considers reports that were actually produced (non-empty).
     """
     txn = state["transaction"]
-    reports = [
-        state["velocity_report"],
-        state["location_report"],
-        state["spending_report"],
-        state["temporal_report"],
-    ]
 
-    # Format specialist findings for the supervisor
+    # Filter to only the reports that were actually run
+    all_reports = {
+        "velocity": state.get("velocity_report", {}),
+        "location": state.get("location_report", {}),
+        "spending": state.get("spending_report", {}),
+        "temporal": state.get("temporal_report", {}),
+    }
+    active_reports = {k: v for k, v in all_reports.items() if v}
+    reports = list(active_reports.values())
+
+    skipped = [k for k, v in all_reports.items() if not v]
+
     findings_text = "\n\n".join([
         f"=== {r['domain'].upper()} ANALYST ===\n"
         f"Risk Level : {r['risk_level']}\n"
@@ -164,8 +256,11 @@ def synthesize_node(state: FraudState) -> dict:
         for r in reports
     ])
 
-    high_count = sum(1 for r in reports if r["risk_level"] == "HIGH")
-    medium_count = sum(1 for r in reports if r["risk_level"] == "MEDIUM")
+    if skipped:
+        findings_text += f"\n\n[Specialists not dispatched for this transaction: {', '.join(skipped)}]"
+
+    high_count   = sum(1 for r in reports if r.get("risk_level") == "HIGH")
+    medium_count = sum(1 for r in reports if r.get("risk_level") == "MEDIUM")
 
     supervisor_prompt = (
         f"Transaction under review:\n"
@@ -175,43 +270,38 @@ def synthesize_node(state: FraudState) -> dict:
         f"  Time     : {txn['time_of_day']}\n"
         f"  City     : {txn.get('city', 'Unknown')}\n"
         f"  ML Score : {txn['fraud_score']:.4f}\n\n"
-        f"Specialist reports ({high_count} HIGH, {medium_count} MEDIUM risk signals):\n\n"
+        f"Triage selected {len(reports)} specialist(s) "
+        f"({high_count} HIGH, {medium_count} MEDIUM risk signals):\n\n"
         f"{findings_text}\n\n"
         "Based on these findings, make your final decision now."
     )
 
-    response = llm.invoke([
+    response = supervisor_llm.invoke([
         SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT),
         HumanMessage(content=supervisor_prompt),
     ])
 
-    # Extract decision from tool call
     if hasattr(response, "tool_calls") and response.tool_calls:
         tc = response.tool_calls[0]
-        tool_name = tc["name"]
-        args = tc["args"]
-
         decision_map = {
-            "block_transaction":   "BLOCK",
-            "approve_transaction": "APPROVE",
-            "review_transaction":  "REVIEW",
+            "block_transaction":     "BLOCK",
+            "approve_transaction":   "APPROVE",
+            "review_transaction":    "REVIEW",
             "request_clarification": "CLARIFICATION_NEEDED",
         }
-        decision = decision_map.get(tool_name, "REVIEW")
-        explanation = args.get("reason") or args.get("question") or ""
+        decision    = decision_map.get(tc["name"], "REVIEW")
+        explanation = tc["args"].get("reason") or tc["args"].get("question") or ""
 
-        # Attach specialist summary to explanation
         specialist_summary = " | ".join([
             f"{r['domain'].upper()}: {r['risk_level']}" for r in reports
         ])
         explanation = f"{explanation}\n\n[Specialist signals: {specialist_summary}]"
-
     else:
-        decision = "REVIEW"
+        decision    = "REVIEW"
         explanation = response.content or "Supervisor could not reach a decision."
 
-    tools_called = ["check_velocity", "check_location",
-                    "analyze_spending_pattern", "check_temporal_pattern"]
+    tools_called = [f"check_{d}" if d != "spending" else "analyze_spending_pattern"
+                    for d in active_reports]
     log_decision(txn["transaction_id"], txn["user_id"], txn["fraud_score"],
                  decision, explanation, tools_called)
 
@@ -223,7 +313,7 @@ def synthesize_node(state: FraudState) -> dict:
 # ---------------------------------------------------------------------------
 
 def after_route(state: FraudState) -> str:
-    return END if state.get("decision") else "dispatch"
+    return END if state.get("decision") else "triage"
 
 
 # ---------------------------------------------------------------------------
@@ -234,12 +324,14 @@ def build_graph():
     g = StateGraph(FraudState)
 
     g.add_node("route",      route_node)
+    g.add_node("triage",     triage_node)
     g.add_node("dispatch",   dispatch_node)
     g.add_node("synthesize", synthesize_node)
 
     g.add_edge(START, "route")
-    g.add_conditional_edges("route", after_route, {"dispatch": "dispatch", END: END})
-    g.add_edge("dispatch",   "synthesize")
+    g.add_conditional_edges("route", after_route, {"triage": "triage", END: END})
+    g.add_edge("triage",    "dispatch")
+    g.add_edge("dispatch",  "synthesize")
     g.add_edge("synthesize", END)
 
     # LangSmith tracing is enabled automatically when these env vars are set:
@@ -250,84 +342,3 @@ def build_graph():
 
 
 agent = build_graph()
-
-
-# ---------------------------------------------------------------------------
-# Local test
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    test_cases = [
-        {
-            "label": "Auto-approve (low score)",
-            "transaction": {
-                "transaction_id": "txn_001",
-                "user_id": "user_001",
-                "amount": 23.50,
-                "merchant_category": "Grocery",
-                "time_of_day": "08:30 AM",
-                "city": "Nashville, TN",
-                "fraud_score": 0.00005,
-            },
-        },
-        {
-            "label": "High risk — suspicious (all signals should converge)",
-            "transaction": {
-                "transaction_id": "txn_002",
-                "user_id": "user_001",
-                "amount": 1250.00,
-                "merchant_category": "Electronics",
-                "time_of_day": "02:14 AM",
-                "city": "Los Angeles, CA",
-                "fraud_score": 0.73,
-            },
-        },
-        {
-            "label": "Big spender — normal pattern",
-            "transaction": {
-                "transaction_id": "txn_003",
-                "user_id": "user_002",
-                "amount": 3500.00,
-                "merchant_category": "Electronics",
-                "time_of_day": "02:00 PM",
-                "city": "San Francisco, CA",
-                "fraud_score": 0.45,
-            },
-        },
-        {
-            "label": "High velocity — card testing pattern (user_003)",
-            "transaction": {
-                "transaction_id": "txn_004",
-                "user_id": "user_003",
-                "amount": 12.00,
-                "merchant_category": "Online Retail",
-                "time_of_day": "07:09 AM",
-                "city": "Chicago, IL",
-                "fraud_score": 0.55,
-            },
-        },
-    ]
-
-    for case in test_cases:
-        print(f"\n{'='*60}")
-        print(f"TEST: {case['label']}")
-        print(f"{'='*60}")
-
-        result = agent.invoke({
-            "transaction": case["transaction"],
-            "messages": [],
-            "velocity_report": {},
-            "location_report": {},
-            "spending_report": {},
-            "temporal_report": {},
-            "decision": "",
-            "explanation": "",
-        })
-
-        print(f"Decision    : {result['decision']}")
-        print(f"Explanation : {result['explanation'][:300]}")
-        if result.get("velocity_report"):
-            print(f"\nSpecialist reports:")
-            for domain in ["velocity", "location", "spending", "temporal"]:
-                r = result.get(f"{domain}_report", {})
-                print(f"  {domain.upper():10} [{r.get('risk_level','?'):6}] {r.get('signal','')}")

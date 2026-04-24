@@ -160,6 +160,8 @@ def analyze_transaction(req: TransactionRequest):
             result = agent.invoke({
                 "transaction": transaction,
                 "messages": [],
+                "specialist_selection": {},
+                "triage_reasoning": "",
                 "velocity_report": {},
                 "location_report": {},
                 "spending_report": {},
@@ -169,17 +171,21 @@ def analyze_transaction(req: TransactionRequest):
             })
             decision = result["decision"]
             explanation = result["explanation"]
+            sel = result.get("specialist_selection", {})
             log.info(json.dumps({
                 "event": "agent_trace",
                 "transaction_id": transaction_id,
-                "velocity_signal": result.get("velocity_report", {}).get("risk", "unknown"),
-                "location_signal": result.get("location_report", {}).get("risk", "unknown"),
-                "spending_signal": result.get("spending_report", {}).get("risk", "unknown"),
-                "temporal_signal": result.get("temporal_report", {}).get("risk", "unknown"),
-                "velocity_detail": result.get("velocity_report", {}).get("detail", ""),
-                "location_detail": result.get("location_report", {}).get("detail", ""),
-                "spending_detail": result.get("spending_report", {}).get("detail", ""),
-                "temporal_detail": result.get("temporal_report", {}).get("detail", ""),
+                "triage_selection": {k: v for k, v in sel.items() if v},
+                "triage_reasoning": result.get("triage_reasoning", ""),
+                "specialists_run": [k for k, v in sel.items() if v],
+                "velocity_signal": result.get("velocity_report", {}).get("risk_level", "skipped"),
+                "location_signal": result.get("location_report", {}).get("risk_level", "skipped"),
+                "spending_signal": result.get("spending_report", {}).get("risk_level", "skipped"),
+                "temporal_signal": result.get("temporal_report", {}).get("risk_level", "skipped"),
+                "velocity_detail": result.get("velocity_report", {}).get("finding", ""),
+                "location_detail": result.get("location_report", {}).get("finding", ""),
+                "spending_detail": result.get("spending_report", {}).get("finding", ""),
+                "temporal_detail": result.get("temporal_report", {}).get("finding", ""),
                 "supervisor_decision": decision,
             }))
         except Exception as e:
