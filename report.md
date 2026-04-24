@@ -172,6 +172,8 @@ Several practical constraints shaped the deployment. Lambda Function URLs were b
 
 The only environment variables the function needs are the DynamoDB table names. AWS credentials are provided automatically by the Lambda execution role.
 
+One operational note specific to the demo: the card testing scenario depends on DynamoDB records seeded within the 60-minute velocity window. The seed timestamps are set relative to the time `setup_dynamodb.py` is run, so the velocity burst is only detectable for approximately 45 minutes after seeding. Re-running the script before a demo session refreshes the timestamps. In a production deployment this would not be a concern — real transaction history populates continuously, and the velocity window always reflects genuine recent activity.
+
 ![GitHub repository for the fraud-agent project](screenshots/screenshot_github.png){ width=70% }
 
 ![README preview showing project overview and architecture](screenshots/screenshot_github_2.png){ width=70% }
