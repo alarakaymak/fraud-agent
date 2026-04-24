@@ -663,11 +663,31 @@
             </div>
             <div class="form-field">
               <label class="field-label">Time of Day</label>
-              <input class="field-input" id="fTime" type="text" placeholder="02:14 AM" value="02:14 AM" />
+              <input class="field-input" id="fTime" type="time" value="02:14" />
             </div>
             <div class="form-field">
               <label class="field-label">City</label>
-              <input class="field-input" id="fCity" type="text" placeholder="Nashville, TN" value="Los Angeles, CA" />
+              <input class="field-input" id="fCity" type="text" placeholder="Nashville, TN" value="Los Angeles, CA" list="cityList" autocomplete="off" />
+              <datalist id="cityList">
+                <option value="Nashville, TN">
+                <option value="Los Angeles, CA">
+                <option value="San Francisco, CA">
+                <option value="Chicago, IL">
+                <option value="New York, NY">
+                <option value="Miami, FL">
+                <option value="Houston, TX">
+                <option value="Dallas, TX">
+                <option value="Austin, TX">
+                <option value="Seattle, WA">
+                <option value="Boston, MA">
+                <option value="Atlanta, GA">
+                <option value="Las Vegas, NV">
+                <option value="Denver, CO">
+                <option value="Phoenix, AZ">
+                <option value="Portland, OR">
+                <option value="London, UK">
+                <option value="Tokyo, Japan">
+              </datalist>
             </div>
           </div>
         </div>
@@ -868,7 +888,7 @@
       setField("fUserId", s.user_id);
       setField("fAmount", s.amount);
       setSelectValue("fMerchant", s.merchant_category);
-      setField("fTime", s.time_of_day);
+      setField("fTime", ampmTo24h(s.time_of_day));
       setField("fCity", s.city);
       currentScore = s.fraud_score_override;
       updateScoreDisplay(currentScore);
@@ -905,12 +925,34 @@
       el.style.color = val < 0.001 ? "var(--green)" : val > 0.6 ? "var(--red)" : "var(--amber)";
     }
 
+    // Convert "HH:MM" (24h from <input type="time">) → "HH:MM AM/PM"
+    function time24ToAmPm(t) {
+      if (!t) return "12:00 PM";
+      const [hStr, mStr] = t.split(":");
+      let h = parseInt(hStr, 10), m = parseInt(mStr, 10);
+      const period = h >= 12 ? "PM" : "AM";
+      if (h === 0) h = 12;
+      else if (h > 12) h -= 12;
+      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")} ${period}`;
+    }
+
+    // Convert "HH:MM AM/PM" → "HH:MM" for <input type="time">
+    function ampmTo24h(t) {
+      if (!t) return "12:00";
+      const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (!m) return "12:00";
+      let h = parseInt(m[1]), min = m[2], period = m[3].toUpperCase();
+      if (period === "PM" && h !== 12) h += 12;
+      if (period === "AM" && h === 12) h = 0;
+      return `${String(h).padStart(2,"0")}:${min}`;
+    }
+
     function getTransaction() {
       const txn = {
         user_id: document.getElementById("fUserId").value || "user_001",
         amount: parseFloat(document.getElementById("fAmount").value) || 100,
         merchant_category: document.getElementById("fMerchant").value,
-        time_of_day: document.getElementById("fTime").value.trim() || "12:00 PM",
+        time_of_day: time24ToAmPm(document.getElementById("fTime").value),
         city: document.getElementById("fCity").value.trim() || "Unknown",
       };
       if (mode === "preset") txn.fraud_score_override = currentScore;
