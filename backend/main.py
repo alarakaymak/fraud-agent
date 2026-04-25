@@ -125,11 +125,14 @@ def analyze_transaction(req: TransactionRequest):
             raise HTTPException(status_code=500, detail=f"Classifier error: {e}")
 
     # Custom input (no override) always goes to agents — the XGBoost score is
-    # unreliable without V1–V28 PCA features, so skip auto-approve routing.
+    # unreliable without V1–V28 PCA features (all default to 0), so skip
+    # auto-approve routing and replace the misleading near-zero score with 0.5
+    # so the triage and supervisor treat the transaction as genuinely uncertain.
     if req.fraud_score_override is not None:
         routing = route(fraud_score)
     else:
         routing = "agent"
+        fraud_score = 0.5
 
     transaction = {
         "transaction_id": transaction_id,
