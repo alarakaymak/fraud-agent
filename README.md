@@ -82,6 +82,19 @@ fraud-agent/
 - AWS credentials configured (`~/.aws/credentials` or environment variables)
 - Docker (for Lambda deployment)
 
+### Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `DYNAMODB_HISTORY_TABLE` | Yes | DynamoDB table name for user transaction history (e.g. `fraud-user-history`) |
+| `DYNAMODB_DECISIONS_TABLE` | Yes | DynamoDB table name for decision audit log (e.g. `fraud-agent-decisions`) |
+| `AWS_DEFAULT_REGION` | Yes | AWS region for Bedrock and DynamoDB (e.g. `us-east-2`) |
+| `LANGCHAIN_TRACING_V2` | No | Set to `true` to enable LangSmith tracing |
+| `LANGCHAIN_API_KEY` | No | LangSmith API key (only needed if tracing enabled) |
+| `LANGCHAIN_PROJECT` | No | LangSmith project name (e.g. `fraud-agent`) |
+
+Do not commit AWS credentials or API keys. Use `~/.aws/credentials`, IAM roles, or environment variables injected at runtime.
+
 ### Local Development
 
 ```bash
@@ -90,12 +103,17 @@ cd fraud-agent
 # Install dependencies
 pip install -r agent/requirements.txt -r backend/requirements.txt
 
-# Run DynamoDB setup (uses AWS DynamoDB)
-python agent/setup_dynamodb.py
+# Create DynamoDB tables and seed demo user history
+cd agent
+AWS_DEFAULT_REGION=us-east-2 DYNAMODB_HISTORY_TABLE=fraud-user-history \
+  DYNAMODB_DECISIONS_TABLE=fraud-agent-decisions python setup_dynamodb.py
 
 # Start API server
-cd backend
-uvicorn main:app --reload --port 8000
+cd ../backend
+DYNAMODB_HISTORY_TABLE=fraud-user-history \
+  DYNAMODB_DECISIONS_TABLE=fraud-agent-decisions \
+  AWS_DEFAULT_REGION=us-east-2 \
+  uvicorn main:app --reload --port 8000
 ```
 
 Open `http://localhost:8000` in your browser.
