@@ -110,19 +110,29 @@ were selected by the triage system. Focus on the reports provided.
 Your job:
 1. Read all specialist reports carefully.
 2. Weigh the signals together — multiple HIGH signals = strong fraud evidence.
-3. Make ONE final decision:
-   - BLOCK                : Strong converging evidence of fraud. MUST use when 2 or more specialists \
-report HIGH risk, regardless of score. Also use when score > 0.8 with any HIGH signal.
-   - APPROVE              : All active specialist signals are LOW, score < 0.6, and the transaction \
-fits the user's established pattern. Skipped specialists were irrelevant — their absence is not \
-a reason to withhold approval.
-   - CLARIFICATION_NEEDED : Ambiguous — the cardholder can resolve it with one question. Use when \
-the transaction is in a known or home city, score is moderate (0.30–0.65), and the HIGH signal \
-is spending or temporal (unusual amount or unusual time the cardholder can confirm). \
-Do NOT use if the HIGH signal is velocity — a burst of transactions cannot be explained by \
-the cardholder and should go to REVIEW instead.
-   - REVIEW               : Conflicting signals with no clear resolution, HIGH velocity signal, \
-unknown user, or multiple MEDIUM/HIGH signals without a single obvious question to ask.
+3. Follow this decision process in order — evaluate EVERY step and stop at the first match:
+
+   STEP 1 — BLOCK (call block_transaction). YOU MUST BLOCK if ANY of these is true. \
+Do NOT skip this step because the city is familiar or the user has history:
+     • 2 or more specialists report HIGH risk
+     • ML score > 0.80 AND at least 1 specialist reports HIGH risk
+
+   STEP 2 — APPROVE (call approve_transaction) if ALL of these are true:
+     • Zero specialists report HIGH risk
+     • ML score < 0.25
+
+   STEP 3 — APPROVE (call approve_transaction) if ALL of these are true:
+     • All active specialists report LOW risk
+     • ML score < 0.60
+     • Transaction amount and timing fit this user's established historical pattern
+
+   STEP 4 — CLARIFICATION_NEEDED (call request_clarification) if ALL of these are true:
+     • ML score is between 0.25 and 0.65 (inclusive)
+     • Transaction is in the user's known or home city
+     • Exactly 1 specialist reports HIGH risk, and it is spending or temporal (NOT velocity, NOT location)
+     • User has prior transaction history in DynamoDB (if no records found, skip to STEP 5)
+
+   STEP 5 — REVIEW (call review_transaction) in all remaining cases.
 
    IMPORTANT: LOW signals from specialists reflect what the data shows — but if a specialist \
 reports LOW simply because the user has no transaction history, treat that as uncertain, \
@@ -288,29 +298,59 @@ def synthesize_node(state: FraudState) -> dict:
         "Based on these findings, make your final decision now."
     )
 
+    # ── Deterministic pre-check: enforce BLOCK before calling the LLM.
+    # The LLM can rationalize its way out of BLOCK; Python cannot.
+    specialist_summary = " | ".join([
+        f"{r['domain'].upper()}: {r['risk_level']}" for r in reports
+    ])
+    if high_count >= 2 or (txn["fraud_score"] > 0.80 and high_count >= 1):
+        high_domains = [r["domain"].upper() for r in reports if r.get("risk_level") == "HIGH"]
+        explanation  = (
+            f"Transaction blocked: {' and '.join(high_domains)} specialists both report HIGH risk "
+            f"(ML score {txn['fraud_score']:.4f}). Multiple converging fraud signals."
+        )
+        explanation = f"{explanation}\n\n[Specialist signals: {specialist_summary}]"
+        tools_called = [f"check_{d}" if d != "spending" else "analyze_spending_pattern"
+                        for d in active_reports]
+        log_decision(txn["transaction_id"], txn["user_id"], txn["fraud_score"],
+                     "BLOCK", explanation, tools_called)
+        return {"decision": "BLOCK", "explanation": explanation}
+
     response = supervisor_llm.invoke([
         SystemMessage(content=SUPERVISOR_SYSTEM_PROMPT),
         HumanMessage(content=supervisor_prompt),
     ])
 
+    decision_map = {
+        "block_transaction":     "BLOCK",
+        "approve_transaction":   "APPROVE",
+        "review_transaction":    "REVIEW",
+        "request_clarification": "CLARIFICATION_NEEDED",
+    }
+
     if hasattr(response, "tool_calls") and response.tool_calls:
+        # Structured tool call — clean path
         tc = response.tool_calls[0]
-        decision_map = {
-            "block_transaction":     "BLOCK",
-            "approve_transaction":   "APPROVE",
-            "review_transaction":    "REVIEW",
-            "request_clarification": "CLARIFICATION_NEEDED",
-        }
         decision    = decision_map.get(tc["name"], "REVIEW")
         explanation = tc["args"].get("reason") or tc["args"].get("question") or ""
-
-        specialist_summary = " | ".join([
-            f"{r['domain'].upper()}: {r['risk_level']}" for r in reports
-        ])
-        explanation = f"{explanation}\n\n[Specialist signals: {specialist_summary}]"
     else:
-        decision    = "REVIEW"
-        explanation = response.content or "Supervisor could not reach a decision."
+        # Fallback: LLM emitted XML in content instead of a structured tool call.
+        # Extract just the tool name and reason — discard the reasoning scratchpad.
+        raw = response.content or ""
+        invoke_m = re.search(r'<invoke name="([^"]+)"', raw)
+        if invoke_m:
+            tool_name = invoke_m.group(1)
+            decision  = decision_map.get(tool_name, "REVIEW")
+            param_tag = "parameter"
+            r_m = re.search(rf'<{param_tag} name="reason">(.*?)</{param_tag}>', raw, re.DOTALL)
+            q_m = re.search(rf'<{param_tag} name="question">(.*?)</{param_tag}>', raw, re.DOTALL)
+            explanation = (r_m.group(1) if r_m else "") or (q_m.group(1) if q_m else "")
+            explanation = explanation.strip()
+        else:
+            decision    = "REVIEW"
+            explanation = "Agent flagged this transaction for human review."
+
+    explanation = f"{explanation}\n\n[Specialist signals: {specialist_summary}]"
 
     tools_called = [f"check_{d}" if d != "spending" else "analyze_spending_pattern"
                     for d in active_reports]

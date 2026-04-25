@@ -148,32 +148,75 @@ def analyze_spending_pattern(user_id: str, current_amount: float) -> str:
 
 
 @tool
-def check_velocity(user_id: str, window_minutes: int = 10) -> str:
+def check_velocity(user_id: str, window_minutes: int = 60) -> str:
     """
-    Count how many transactions this user made in the last N minutes.
-    High velocity (3+ transactions in 10 minutes) is a strong fraud signal
-    indicating card testing or automated bot activity.
+    Detect high-frequency transaction patterns for this user.
+    Checks both a time-window count and the density between recent transactions.
+    A burst of 3+ transactions within 15 minutes is a strong card-testing signal.
     """
     table_name = os.environ.get("DYNAMODB_HISTORY_TABLE")
     cutoff = int(_time.time()) - (window_minutes * 60)
 
     if table_name:
         table = _get_table(table_name)
-        response = table.query(
+        # Count within the rolling window
+        windowed = table.query(
             KeyConditionExpression=Key("user_id").eq(user_id) & Key("timestamp").gt(cutoff),
         )
-        recent = response.get("Items", [])
+        recent_window = windowed.get("Items", [])
+        # Fetch the most recent 10 transactions for burst-density check
+        latest = table.query(
+            KeyConditionExpression=Key("user_id").eq(user_id),
+            ScanIndexForward=False,
+            Limit=10,
+        )
+        recent_all = latest.get("Items", [])
+        # If DynamoDB returned nothing, fall back to mock data for burst detection
+        if not recent_all:
+            recent_all = sorted(MOCK_HISTORY.get(user_id, []),
+                                key=lambda x: x.get("timestamp", 0), reverse=True)[:10]
     else:
-        recent = [t for t in MOCK_HISTORY.get(user_id, []) if t.get("timestamp", 0) > cutoff]
+        recent_window = [t for t in MOCK_HISTORY.get(user_id, []) if t.get("timestamp", 0) > cutoff]
+        recent_all = sorted(MOCK_HISTORY.get(user_id, []),
+                            key=lambda x: x.get("timestamp", 0), reverse=True)[:10]
 
-    count = len(recent)
-    is_high_velocity = count >= 3
+    window_count = len(recent_window)
+    is_high_velocity = window_count >= 3
+
+    # Burst detection: 3+ transactions within any 15-minute span among the most recent items
+    burst_signal = ""
+    if not is_high_velocity and len(recent_all) >= 3:
+        timestamps = sorted([float(t.get("timestamp", 0)) for t in recent_all], reverse=True)
+        for i in range(len(timestamps) - 2):
+            span_sec = timestamps[i] - timestamps[i + 2]
+            if span_sec <= 900:  # 15 minutes
+                burst_count = sum(1 for ts in timestamps if ts >= timestamps[i + 2])
+                span_min = round(span_sec / 60, 1)
+                is_high_velocity = True
+                burst_signal = (
+                    f"{burst_count} transactions within {span_min} minutes "
+                    f"— BURST PATTERN, possible card testing"
+                )
+                break
+
+    if burst_signal:
+        # Burst found in recent history — return only the burst info so the
+        # specialist isn't confused by a zero window count alongside HIGH risk.
+        return _dumps({
+            "burst_pattern_detected": True,
+            "risk_indicator": "HIGH — burst of rapid transactions detected (possible card testing)",
+            "signal": burst_signal,
+        })
+    elif is_high_velocity:
+        signal = f"{window_count} transaction(s) in the last {window_minutes} minutes — HIGH VELOCITY, possible card testing"
+    else:
+        signal = f"{window_count} transaction(s) in the last {window_minutes} minutes — normal activity"
 
     return _dumps({
-        "transactions_in_last_n_minutes": count,
+        "transactions_in_window": window_count,
         "window_minutes": window_minutes,
-        "is_high_velocity": is_high_velocity,
-        "signal": f"{count} transaction(s) in the last {window_minutes} minutes" + (" — HIGH VELOCITY, possible card testing" if is_high_velocity else " — normal activity"),
+        "burst_pattern_detected": is_high_velocity,
+        "signal": signal,
     })
 
 
@@ -217,12 +260,26 @@ def check_temporal_pattern(user_id: str, current_time_of_day: str) -> str:
     is_unusual_time = current_hour < min_hour - 1 or current_hour > max_hour + 1
     typical_window = f"{int(min_hour):02d}:00 – {int(max_hour):02d}:59"
 
+    # Compute risk deterministically — midnight–6 AM is HIGH (fraud hours),
+    # evening outside window is MEDIUM, within window is LOW.
+    if is_unusual_time:
+        if current_hour < 6:
+            computed_risk = "HIGH"
+            time_context  = "FRAUD HOURS (midnight–6 AM)"
+        else:
+            computed_risk = "MEDIUM"
+            time_context  = "evening hours (7 PM–midnight) — unusual but not fraud-specific"
+    else:
+        computed_risk = "LOW"
+        time_context  = "within normal hours"
+
     return _dumps({
         "current_hour": round(current_hour, 2),
         "user_typical_window": typical_window,
         "average_transaction_hour": round(avg_hour, 2),
         "is_unusual_time": is_unusual_time,
-        "signal": f"Transaction at {current_time_of_day}; user typically transacts {typical_window}" + (" — OUTSIDE normal hours" if is_unusual_time else " — within normal hours"),
+        "computed_risk_level": computed_risk,
+        "signal": f"Transaction at {current_time_of_day}; user typically transacts {typical_window} — {time_context}",
     })
 
 

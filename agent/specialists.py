@@ -26,16 +26,20 @@ VELOCITY_PROMPT = """\
 You are a transaction velocity analyst for a fraud detection system.
 Your ONLY job is to assess whether the frequency of recent transactions is suspicious.
 
-You will receive a transaction and the user's recent transaction history.
-Analyze:
-- How many transactions in the last 10-30 minutes?
-- Is there a burst pattern typical of card testing (small amounts, rapid succession)?
-- What is the normal transaction frequency for this user?
+Classification rules — check in order and stop at the first match:
+
+HIGH: The data shows burst_pattern_detected: true OR risk_indicator contains "HIGH". \
+A burst of rapid transactions (3+ within 15 minutes) is a definitive card-testing signal. \
+Report HIGH immediately — do not let a low window count override this.
+
+MEDIUM: 2 transactions in the recent window, or slightly elevated frequency.
+
+LOW: 0–1 transactions in the window and no burst pattern detected.
 
 Respond in this exact format:
 RISK_LEVEL: [LOW|MEDIUM|HIGH]
 FINDING: [one clear sentence explaining your finding]
-SIGNAL: [specific data point e.g. "4 transactions in 10 minutes"]
+SIGNAL: [specific data point e.g. "3 transactions within 4 minutes — burst pattern"]
 """
 
 
@@ -135,10 +139,19 @@ You are a temporal pattern analyst for a fraud detection system.
 Your ONLY job is to assess whether the time of this transaction is suspicious.
 
 You will receive the current transaction time and the user's typical transaction hours.
-Analyze:
-- Is this time outside the user's normal transaction window?
-- Is this a time commonly associated with fraud (2AM-5AM)?
-- Is the time consistent with the claimed merchant category (e.g. grocery at 3AM is unusual)?
+
+Apply this exact risk classification — check in order and stop at the first match:
+
+HIGH: The transaction time falls between midnight and 6:00 AM (00:00–05:59) AND is outside \
+the user's normal transaction window. These are the primary fraud hours. A grocery store or \
+electronics purchase at 2 AM or 3 AM is strongly suspicious.
+
+MEDIUM: The transaction time is outside the user's normal transaction window but falls \
+between 7:00 PM and 11:59 PM (evening hours). Evening is unusual but not a fraud-specific \
+pattern — could be legitimate late shopping.
+
+LOW: The transaction time falls within or close to (±1 hour) the user's normal \
+transaction window, regardless of the hour.
 
 Respond in this exact format:
 RISK_LEVEL: [LOW|MEDIUM|HIGH]
@@ -148,6 +161,7 @@ SIGNAL: [specific data point e.g. "2:14 AM — outside normal window of 08:00-19
 
 
 def run_temporal_specialist(transaction: dict, temporal_data: str) -> dict:
+    import json as _json
     llm = _llm()
     messages = [
         SystemMessage(content=TEMPORAL_PROMPT),
@@ -159,7 +173,16 @@ def run_temporal_specialist(transaction: dict, temporal_data: str) -> dict:
         ))
     ]
     response = llm.invoke(messages)
-    return _parse_report("temporal", response.content)
+    result = _parse_report("temporal", response.content)
+    # Override the LLM's risk classification with the deterministic value from the tool.
+    # This prevents the LLM from up-rating evening hours to HIGH.
+    try:
+        tool_data = _json.loads(temporal_data)
+        if "computed_risk_level" in tool_data:
+            result["risk_level"] = tool_data["computed_risk_level"]
+    except Exception:
+        pass
+    return result
 
 
 # ---------------------------------------------------------------------------
